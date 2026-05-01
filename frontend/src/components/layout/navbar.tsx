@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '../auth-provider';
 import { Button } from '../ui/button';
 import {
@@ -12,7 +13,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Bell, Search, Menu, FileText, Loader2, BookOpen } from 'lucide-react';
+import { Bell, Search, Menu, FileText, Loader2, BookOpen, Shield, Users, CheckSquare, UsersRound } from 'lucide-react';
 import { Input } from '../ui/input';
 import { useState, useEffect } from 'react';
 import { useDebounce } from 'use-debounce';
@@ -20,6 +21,7 @@ import { supabase } from '@/lib/supabase';
 
 export function Navbar() {
   const { user, dbUser, signOut } = useAuth();
+  const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedQuery] = useDebounce(searchQuery, 400);
   const [searchResults, setSearchResults] = useState<any[]>([]);
@@ -137,17 +139,15 @@ export function Navbar() {
           </Button>
 
           <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="relative h-9 w-9 rounded-full">
-                <Avatar className="h-9 w-9">
-                  <AvatarImage src={dbUser?.avatar_url || user?.user_metadata?.avatar_url} alt="Avatar" />
-                  <AvatarFallback className="bg-blue-100 text-blue-700 font-semibold">
-                    {dbUser?.full_name?.charAt(0) || 'U'}
-                  </AvatarFallback>
-                </Avatar>
-              </Button>
+            <DropdownMenuTrigger className="relative h-9 w-9 rounded-full outline-none cursor-pointer hover:bg-slate-100 transition-colors flex items-center justify-center">
+              <Avatar className="h-9 w-9">
+                <AvatarImage src={dbUser?.avatar_url || user?.user_metadata?.avatar_url} alt="Avatar" />
+                <AvatarFallback className="bg-blue-100 text-blue-700 font-semibold">
+                  {dbUser?.full_name?.charAt(0) || 'U'}
+                </AvatarFallback>
+              </Avatar>
             </DropdownMenuTrigger>
-            <DropdownMenuContent className="w-56 rounded-xl border-slate-200 shadow-xl" align="end" forceMount>
+            <DropdownMenuContent className="w-56 rounded-xl border-slate-200 shadow-xl" align="end">
               <DropdownMenuLabel className="font-normal">
                 <div className="flex flex-col space-y-1">
                   <p className="text-sm font-medium leading-none">{dbUser?.full_name || 'User'}</p>
@@ -157,12 +157,35 @@ export function Navbar() {
                 </div>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem className="cursor-pointer rounded-lg">
+              <DropdownMenuItem
+                className="cursor-pointer rounded-lg"
+                onClick={() => router.push('/profile')}
+              >
                 Profile
               </DropdownMenuItem>
               <DropdownMenuItem className="cursor-pointer rounded-lg">
                 Settings
               </DropdownMenuItem>
+
+              {dbUser?.role === 'admin' && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuLabel className="text-[10px] uppercase text-slate-400 font-bold tracking-widest pb-1">Admin Tools</DropdownMenuLabel>
+                  <DropdownMenuItem className="cursor-pointer rounded-lg" onClick={() => router.push('/admin?tab=users')}>
+                    <Users className="mr-2 h-4 w-4 text-blue-600" /> Verifications
+                  </DropdownMenuItem>
+                  <DropdownMenuItem className="cursor-pointer rounded-lg" onClick={() => router.push('/admin?tab=content')}>
+                    <CheckSquare className="mr-2 h-4 w-4 text-blue-600" /> Approve Content
+                  </DropdownMenuItem>
+                  <DropdownMenuItem className="cursor-pointer rounded-lg" onClick={() => router.push('/admin?tab=notices')}>
+                    <Bell className="mr-2 h-4 w-4 text-blue-600" /> Approve Notices
+                  </DropdownMenuItem>
+                  <DropdownMenuItem className="cursor-pointer rounded-lg" onClick={() => router.push('/admin?tab=admins')}>
+                    <UsersRound className="mr-2 h-4 w-4 text-blue-600" /> Manage Admins
+                  </DropdownMenuItem>
+                </>
+              )}
+
               <DropdownMenuSeparator />
               <DropdownMenuItem className="cursor-pointer text-red-600 focus:bg-red-50 rounded-lg" onClick={signOut}>
                 Log out

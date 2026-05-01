@@ -2,12 +2,15 @@
 
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
+import { useAuth } from '@/components/auth-provider';
+import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { MessageSquare, Loader2, Plus, CornerDownRight } from 'lucide-react';
+import { MessageSquare, Loader2, Plus, CornerDownRight, Lock } from 'lucide-react';
 import { format } from 'date-fns';
+import Link from 'next/link';
 
 export default function RequestsPage() {
+  const { isVerified } = useAuth();
   const [requests, setRequests] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -41,9 +44,21 @@ export default function RequestsPage() {
           </h1>
           <p className="text-slate-500 mt-1">Ask for notes, solutions, or help from peers.</p>
         </div>
-        <Button className="rounded-xl bg-blue-600 hover:bg-blue-700 text-white">
-          <Plus className="mr-2 h-4 w-4" /> New Request
-        </Button>
+
+        {isVerified ? (
+          <Button className="rounded-xl bg-blue-600 hover:bg-blue-700 text-white">
+            <Plus className="mr-2 h-4 w-4" /> New Request
+          </Button>
+        ) : (
+          <Link href="/profile">
+            <Button
+              variant="secondary"
+              className="rounded-xl text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200"
+            >
+              <Lock className="mr-2 h-4 w-4" /> Verify to Request
+            </Button>
+          </Link>
+        )}
       </div>
 
       {loading ? (
@@ -81,9 +96,17 @@ export default function RequestsPage() {
                 </div>
               </CardContent>
               <CardFooter className="bg-slate-50 border-t border-slate-100 py-3 rounded-b-2xl">
-                <Button variant="ghost" size="sm" className="text-slate-500 hover:text-blue-600 rounded-lg">
-                  <CornerDownRight className="mr-2 h-4 w-4" /> Reply with Content
-                </Button>
+                {isVerified ? (
+                  <Button variant="ghost" size="sm" className="text-slate-500 hover:text-blue-600 rounded-lg">
+                    <CornerDownRight className="mr-2 h-4 w-4" /> Reply with Content
+                  </Button>
+                ) : (
+                  <Link href="/profile">
+                    <Button variant="ghost" size="sm" className="text-amber-600 hover:text-amber-700 rounded-lg">
+                      <Lock className="mr-2 h-4 w-4" /> Verify to Reply
+                    </Button>
+                  </Link>
+                )}
               </CardFooter>
             </Card>
           ))}

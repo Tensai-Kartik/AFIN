@@ -11,7 +11,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { Loader2, UploadCloud } from 'lucide-react';
+import { Loader2, UploadCloud, Lock } from 'lucide-react';
+import Link from 'next/link';
 
 interface UploadFormProps {
   defaultType?: 'notes' | 'pyqs' | 'assignments' | 'solutions';
@@ -89,10 +90,15 @@ export function UploadForm({ defaultType = 'notes', onSuccess }: UploadFormProps
 
   if (!isVerifiedStudent) {
     return (
-      <Button disabled variant="secondary" className="rounded-xl">
-        <UploadCloud className="mr-2 h-4 w-4" />
-        Upload (Verified Only)
-      </Button>
+      <Link href="/profile">
+        <Button
+          variant="secondary"
+          className="rounded-xl text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200"
+        >
+          <Lock className="mr-2 h-4 w-4" />
+          Verify to Upload
+        </Button>
+      </Link>
     );
   }
 

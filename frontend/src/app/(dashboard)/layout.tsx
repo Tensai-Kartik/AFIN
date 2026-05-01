@@ -2,6 +2,7 @@
 
 import { Navbar } from '@/components/layout/navbar';
 import { Sidebar } from '@/components/layout/sidebar';
+import { VerificationBanner } from '@/components/layout/verification-banner';
 import { useAuth } from '@/components/auth-provider';
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
@@ -15,7 +16,7 @@ export default function DashboardLayout({
 }) {
   const { user, loading } = useAuth();
   const router = useRouter();
-  useSocket(); // Initialize socket connection
+  useSocket();
 
   useEffect(() => {
     if (!loading && !user) {
@@ -34,6 +35,7 @@ export default function DashboardLayout({
   return (
     <div className="flex flex-col min-h-screen bg-slate-50">
       <Navbar />
+      <VerificationBanner />
       <div className="flex flex-1 overflow-hidden">
         <Sidebar />
         <main className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8">

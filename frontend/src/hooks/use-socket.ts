@@ -22,7 +22,7 @@ export function useSocket() {
 
     if (!socket) {
       // Connect to the Express backend
-      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000';
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || '/_/backend';
       socket = io(backendUrl, {
         auth: { token: user.id }
       });

@@ -7,10 +7,18 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Bell, Loader2, Pin } from 'lucide-react';
 import { format } from 'date-fns';
+import { SubmitNoticeForm } from '@/components/notices/submit-notice-form';
+import { DeleteConfirmModal } from '@/components/ui/delete-confirm-modal';
+import { Trash2 } from 'lucide-react';
+import { useAuth } from '@/components/auth-provider';
+import { toast } from 'sonner';
 
 export default function NoticesPage() {
   const [notices, setNotices] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const { user, dbUser } = useAuth();
 
   useEffect(() => {
     fetchNotices();
@@ -22,6 +30,7 @@ export default function NoticesPage() {
         .from('notices')
         .select('*')
         .eq('status', 'approved')
+        .is('deleted_at', null)
         .order('is_important', { ascending: false })
         .order('created_at', { ascending: false });
 
@@ -31,6 +40,33 @@ export default function NoticesPage() {
       console.error('Error fetching notices:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!deleteId) return;
+    setDeleting(true);
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000';
+      const res = await fetch(`${backendUrl}/api/delete/notices/${deleteId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+
+      toast.success('Deleted successfully');
+      fetchNotices();
+      setDeleteId(null);
+    } catch (error: any) {
+      console.error('Delete error:', error);
+      toast.error(error.message || 'Failed to delete');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -44,6 +80,7 @@ export default function NoticesPage() {
           </h1>
           <p className="text-slate-500 mt-1">Stay updated with the latest university announcements.</p>
         </div>
+        <SubmitNoticeForm onSuccess={fetchNotices} />
       </div>
       
       {loading ? (
@@ -64,7 +101,19 @@ export default function NoticesPage() {
                     {notice.is_important && <Pin className="w-3 h-3 mr-1 inline" />}
                     {notice.category}
                   </Badge>
-                  <span className="text-xs text-slate-400 font-medium">{format(new Date(notice.created_at), 'MMM d, yyyy')}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-slate-400 font-medium">{format(new Date(notice.created_at), 'MMM d, yyyy')}</span>
+                    {(user?.id === notice.author_id || dbUser?.role === 'admin') && (
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        className="h-8 w-8 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg"
+                        onClick={() => setDeleteId(notice.id)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
                 </div>
                 <CardTitle className={`text-xl ${notice.is_important ? 'text-red-900' : 'text-slate-900'}`}>{notice.title}</CardTitle>
               </CardHeader>
@@ -75,6 +124,13 @@ export default function NoticesPage() {
           ))}
         </div>
       )}
+
+      <DeleteConfirmModal 
+        open={!!deleteId} 
+        onOpenChange={(open) => !open && setDeleteId(null)}
+        onConfirm={handleDelete}
+        loading={deleting}
+      />
     </div>
   );
 }

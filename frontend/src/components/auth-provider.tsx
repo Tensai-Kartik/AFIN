@@ -53,9 +53,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       console.error('Error fetching db user:', error);
     } else {
       setDbUser(data);
-      // NO forced redirect — profile completion is optional/voluntary
     }
   };
+
+
 
   useEffect(() => {
     let isMounted = true;
@@ -82,7 +83,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           fetchDbUser(session.user.id);
         } else {
           setDbUser(null);
-          if (pathnameRef.current !== '/login') router.push('/login');
+          if (pathnameRef.current !== '/login' && !pathnameRef.current?.startsWith('/auth')) {
+             router.push('/login');
+          }
         }
       }
     );
@@ -99,11 +102,14 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     router.push('/login');
   };
 
-  const isVerified = dbUser?.role === 'verified_student' || dbUser?.role === 'admin';
-  const isSoleAdmin = user?.email === SOLE_ADMIN_EMAIL;
-  // Profile submitted = PRN is no longer PENDING but not yet admin-verified
+  const isVerified =
+    (dbUser?.role === 'verified_student' || dbUser?.role === 'admin') &&
+    dbUser?.status === 'verified';
+  const isSoleAdmin = dbUser?.role === 'admin' || user?.email === SOLE_ADMIN_EMAIL;
+  // Profile submitted = PRN is no longer PENDING
   const hasPendingVerification =
     dbUser !== null &&
+    dbUser?.prn &&
     !dbUser?.prn?.startsWith('PENDING-') &&
     dbUser?.status === 'pending';
 

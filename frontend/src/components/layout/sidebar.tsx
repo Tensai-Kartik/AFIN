@@ -16,6 +16,10 @@ import {
   Users,
   CheckSquare,
   UsersRound,
+  MessageSquarePlus,
+  Building2,
+  Briefcase,
+  Trophy,
 } from 'lucide-react';
 import { useAuth } from '../auth-provider';
 
@@ -31,6 +35,13 @@ const routes = [
   { name: 'Bookmarks', path: '/bookmarks', icon: Bookmark },
 ];
 
+const ecosystemRoutes = [
+  { name: 'Feedback System', path: '/feedback', icon: MessageSquarePlus },
+  { name: 'Campus Hub', path: '/campus', icon: Building2 },
+  { name: 'Placement', path: '/placement', icon: Briefcase },
+  { name: 'Leaderboard', path: '/leaderboard', icon: Trophy },
+];
+
 export function Sidebar() {
   const pathname = usePathname();
   const { dbUser, isVerified, hasPendingVerification } = useAuth();
@@ -39,7 +50,7 @@ export function Sidebar() {
   const showVerifyBadge = !isVerified && !hasPendingVerification;
 
   return (
-    <div className="hidden lg:flex w-64 flex-col bg-white border-r border-slate-200 h-[calc(100vh-64px)] overflow-y-auto">
+    <div className="hidden lg:flex w-64 flex-col bg-white border-r border-slate-200 h-full overflow-y-auto shrink-0">
       <div className="flex-1 py-6 px-4 space-y-1">
         {routes.map((route) => {
           const isActive = pathname === route.path;
@@ -59,6 +70,30 @@ export function Sidebar() {
             </Link>
           );
         })}
+
+        {/* Ecosystem Section */}
+        <div className="pt-4 mt-4 border-t border-slate-100">
+          <p className="px-3 text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Ecosystem</p>
+          {ecosystemRoutes.map((route) => {
+            if (isAdmin && route.name === 'Feedback System') return null;
+            const isActive = pathname === route.path;
+            return (
+              <Link
+                key={route.path}
+                href={route.path}
+                className={cn(
+                  "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200",
+                  isActive 
+                    ? "bg-blue-50 text-blue-600" 
+                    : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                )}
+              >
+                <route.icon className={cn("h-5 w-5", isActive ? "text-blue-600" : "text-slate-400")} />
+                {route.name}
+              </Link>
+            );
+          })}
+        </div>
 
         {isAdmin && (
           <>
@@ -84,6 +119,7 @@ export function Sidebar() {
                   { name: 'Approve Content', icon: CheckSquare, tab: 'content' },
                   { name: 'Approve Notices', icon: Bell, tab: 'notices' },
                   { name: 'Manage Admins', icon: UsersRound, tab: 'admins' },
+                  { name: 'Feedback Insights', icon: MessageSquarePlus, tab: 'feedback' },
                 ].map((adminLink) => (
                   <Link
                     key={adminLink.name}

@@ -13,21 +13,33 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { toast } from 'sonner';
 import { Loader2, UploadCloud, Lock } from 'lucide-react';
 import Link from 'next/link';
+import { RequireVerification } from '../require-verification';
 
 interface UploadFormProps {
   defaultType?: 'notes' | 'pyqs' | 'assignments' | 'solutions';
   onSuccess?: () => void;
+  requestId?: string;
+  prefilledTitle?: string;
+  prefilledSubject?: string;
+  customTrigger?: React.ReactElement;
 }
 
-export function UploadForm({ defaultType = 'notes', onSuccess }: UploadFormProps) {
+export function UploadForm({ 
+  defaultType = 'notes', 
+  onSuccess, 
+  requestId, 
+  prefilledTitle = '', 
+  prefilledSubject = '',
+  customTrigger 
+}: UploadFormProps) {
   const { user, dbUser } = useAuth();
   const [open, setOpen] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
 
   // Form State
-  const [title, setTitle] = useState('');
+  const [title, setTitle] = useState(prefilledTitle);
   const [description, setDescription] = useState('');
-  const [subject, setSubject] = useState('');
+  const [subject, setSubject] = useState(prefilledSubject);
   const [semester, setSemester] = useState('1');
   const [type, setType] = useState(defaultType);
   const [file, setFile] = useState<File | null>(null);
@@ -52,21 +64,60 @@ export function UploadForm({ defaultType = 'notes', onSuccess }: UploadFormProps
       // 1. Upload to Storage
       const fileUrl = await uploadContent(file, user.id, type as any);
 
-      // 2. Insert into Database
-      const { error } = await supabase.from('content').insert({
-        title,
-        description,
-        subject,
-        semester: parseInt(semester),
-        type,
-        file_url: fileUrl,
-        uploader_id: user.id,
-        status: 'pending', // Requires admin approval
-      });
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000';
 
-      if (error) throw error;
+      if (requestId) {
+        // 2a. Use Backend API for Request Reply
+        const res = await fetch(`${backendUrl}/api/content/reply-request`, {
+          method: 'POST',
+          headers: { 
+            'Authorization': `Bearer ${token}`, 
+            'Content-Type': 'application/json' 
+          },
+          body: JSON.stringify({
+            request_id: requestId,
+            title,
+            description,
+            subject,
+            semester: parseInt(semester),
+            type,
+            file_url: fileUrl
+          })
+        });
 
-      toast.success('Upload submitted successfully! Awaiting admin approval.');
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to submit response.');
+
+        toast.success(data.message);
+      } else {
+        // 2b. Direct Supabase Insert for normal upload
+        const { error } = await supabase.from('content').insert({
+          title,
+          description,
+          subject,
+          semester: parseInt(semester),
+          type,
+          file_url: fileUrl,
+          uploader_id: user.id,
+          status: 'pending',
+        });
+
+        if (error) throw error;
+
+        // Award +10 points for uploading (legacy flow for direct inserts)
+        if (token) {
+          await fetch(`${backendUrl}/api/profile/award-points`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ amount: 10 })
+          }).catch(console.error);
+        }
+
+        toast.success('Upload submitted successfully! Awaiting admin approval.');
+      }
+
       setOpen(false);
       resetForm();
       if (onSuccess) onSuccess();
@@ -80,41 +131,36 @@ export function UploadForm({ defaultType = 'notes', onSuccess }: UploadFormProps
   };
 
   const resetForm = () => {
-    setTitle('');
+    setTitle(prefilledTitle);
     setDescription('');
-    setSubject('');
+    setSubject(prefilledSubject);
     setSemester('1');
     setType(defaultType);
     setFile(null);
   };
 
-  if (!isVerifiedStudent) {
-    return (
-      <Link href="/profile">
-        <Button
-          variant="secondary"
-          className="rounded-xl text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200"
-        >
-          <Lock className="mr-2 h-4 w-4" />
-          Verify to Upload
-        </Button>
-      </Link>
-    );
-  }
-
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button className="rounded-xl bg-blue-600 hover:bg-blue-700 text-white">
-          <UploadCloud className="mr-2 h-4 w-4" />
-          Upload Content
-        </Button>
-      </DialogTrigger>
+      <RequireVerification>
+        <DialogTrigger
+          render={
+            customTrigger || (
+              <Button className="rounded-xl bg-blue-600 hover:bg-blue-700 text-white">
+                <UploadCloud className="mr-2 h-4 w-4" />
+                Upload Content
+              </Button>
+            )
+          }
+        />
+      </RequireVerification>
       <DialogContent className="sm:max-w-[500px] rounded-2xl border-0 shadow-2xl">
         <DialogHeader>
-          <DialogTitle>Upload New Content</DialogTitle>
+          <DialogTitle>{requestId ? 'Reply with Content' : 'Upload New Content'}</DialogTitle>
           <DialogDescription>
-            Share your notes, assignments, or PYQs with the community. All uploads require admin approval.
+            {requestId 
+              ? 'Provide the requested material. Your contribution helps the community!' 
+              : 'Share your notes, assignments, or PYQs with the community. All uploads require admin approval.'
+            }
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4 mt-4">
@@ -145,7 +191,7 @@ export function UploadForm({ defaultType = 'notes', onSuccess }: UploadFormProps
 
             <div className="space-y-2">
               <Label htmlFor="semester">Semester *</Label>
-              <Select value={semester} onValueChange={setSemester}>
+              <Select value={semester} onValueChange={(val) => val && setSemester(val)}>
                 <SelectTrigger className="rounded-xl">
                   <SelectValue placeholder="Select semester" />
                 </SelectTrigger>
@@ -159,7 +205,7 @@ export function UploadForm({ defaultType = 'notes', onSuccess }: UploadFormProps
 
             <div className="space-y-2 col-span-2">
               <Label htmlFor="type">Content Type *</Label>
-              <Select value={type} onValueChange={(val) => setType(val as any)}>
+              <Select value={type} onValueChange={(val) => val && setType(val as any)}>
                 <SelectTrigger className="rounded-xl">
                   <SelectValue placeholder="Select type" />
                 </SelectTrigger>

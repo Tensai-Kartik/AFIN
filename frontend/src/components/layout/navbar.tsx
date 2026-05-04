@@ -12,21 +12,32 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Bell, Search, Menu, FileText, Loader2, BookOpen, Shield, Users, CheckSquare, UsersRound } from 'lucide-react';
+import { Bell, Search, Menu, FileText, Loader2, BookOpen, Shield, Users, CheckSquare, UsersRound, ShieldAlert, SlidersHorizontal, MessageSquare } from 'lucide-react';
 import { Input } from '../ui/input';
 import { useState, useEffect } from 'react';
 import { useDebounce } from 'use-debounce';
 import { supabase } from '@/lib/supabase';
 
 export function Navbar() {
-  const { user, dbUser, signOut } = useAuth();
+  const { user, dbUser, signOut, isVerified } = useAuth();
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedQuery] = useDebounce(searchQuery, 400);
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [showResults, setShowResults] = useState(false);
+  
+  // Notifications
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [loadingNotifications, setLoadingNotifications] = useState(false);
+  
+  // Search Filters
+  const [searchType, setSearchType] = useState<string>('all');
+  const [searchSemester, setSearchSemester] = useState<string>('all');
+  const [searchSort, setSearchSort] = useState<string>('newest');
 
   useEffect(() => {
     if (debouncedQuery.trim() === '') {
@@ -38,27 +49,23 @@ export function Navbar() {
     const performSearch = async () => {
       setIsSearching(true);
       try {
-        const { data, error } = await supabase
-          .from('content')
-          .select('id, title, type, subject')
-          .eq('status', 'approved')
-          .textSearch('title', `'${debouncedQuery}'`, { type: 'websearch', config: 'english' })
-          .limit(5);
+        const params = new URLSearchParams({ q: debouncedQuery });
+        if (searchType !== 'all') params.append('type', searchType);
+        if (searchSemester !== 'all') params.append('semester', searchSemester);
+        params.append('sort', searchSort);
 
-        if (error) throw error;
-
-        // If no full text match, try ilike fallback
-        if (!data || data.length === 0) {
-           const { data: fallbackData } = await supabase
-            .from('content')
-            .select('id, title, type, subject')
-            .eq('status', 'approved')
-            .ilike('title', `%${debouncedQuery}%`)
-            .limit(5);
-           setSearchResults(fallbackData || []);
-        } else {
-           setSearchResults(data || []);
-        }
+        const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000';
+        const res = await fetch(`${backendUrl}/api/search?${params}`);
+        const data = await res.json();
+        
+        // Flatten results for the dropdown
+        const flattened = [
+          ...(data.content || []).map((item: any) => ({ ...item, category: 'Content' })),
+          ...(data.notices || []).map((item: any) => ({ ...item, category: 'Notice', type: 'notices' })),
+          ...(data.requests || []).map((item: any) => ({ ...item, category: 'Request', type: 'requests' }))
+        ];
+        
+        setSearchResults(flattened.slice(0, 8));
       } catch (error) {
         console.error('Search error:', error);
       } finally {
@@ -67,7 +74,91 @@ export function Navbar() {
     };
 
     performSearch();
-  }, [debouncedQuery]);
+  }, [debouncedQuery, searchType, searchSemester, searchSort]);
+
+  // Notifications logic
+  const fetchNotifications = async () => {
+    if (!user) return;
+    setLoadingNotifications(true);
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData?.session?.access_token;
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000';
+      
+      const [notifsRes, countRes] = await Promise.all([
+        fetch(`${backendUrl}/api/notifications`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        }),
+        fetch(`${backendUrl}/api/notifications/unread-count`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        })
+      ]);
+
+      if (!notifsRes.ok || !countRes.ok) {
+        throw new Error('Failed to fetch notifications');
+      }
+
+      const notifsContentType = notifsRes.headers.get('content-type');
+      const countContentType = countRes.headers.get('content-type');
+
+      if (!notifsContentType?.includes('application/json') || !countContentType?.includes('application/json')) {
+        throw new Error('Received non-JSON response from server');
+      }
+
+      const notifsData = await notifsRes.json();
+      const countData = await countRes.json();
+
+      setNotifications(notifsData || []);
+      setUnreadCount(countData.count || 0);
+    } catch (error) {
+      console.error('Error fetching notifications:', error);
+    } finally {
+      setLoadingNotifications(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchNotifications();
+    // Poll every 60 seconds
+    const interval = setInterval(fetchNotifications, 60000);
+    return () => clearInterval(interval);
+  }, [user]);
+
+  const handleMarkAllRead = async () => {
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData?.session?.access_token;
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000';
+      
+      await fetch(`${backendUrl}/api/notifications/read-all`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      setUnreadCount(0);
+      setNotifications(notifications.map(n => ({ ...n, is_read: true })));
+      setTimeout(() => setNotifications([]), 500); // Clear after fade out
+    } catch (error) {
+      console.error('Error marking all read:', error);
+    }
+  };
+
+  const handleMarkRead = async (id: string) => {
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData?.session?.access_token;
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000';
+      
+      await fetch(`${backendUrl}/api/notifications/${id}/read`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      
+      setNotifications(notifications.filter(n => n.id !== id));
+      setUnreadCount(prev => Math.max(0, prev - 1));
+    } catch (error) {
+      console.error('Error marking read:', error);
+    }
+  };
 
   return (
     <nav className="sticky top-0 z-50 w-full border-b border-slate-200 bg-white/80 backdrop-blur-md">
@@ -84,18 +175,60 @@ export function Navbar() {
         <div className="hidden md:flex flex-1 max-w-md ml-4 relative">
           <div className="relative w-full">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
-            <Input
-              type="search"
-              placeholder="Search notes, notices..."
-              value={searchQuery}
-              onChange={(e) => {
-                setSearchQuery(e.target.value);
-                setShowResults(true);
-              }}
-              onFocus={() => setShowResults(true)}
-              onBlur={() => setTimeout(() => setShowResults(false), 200)}
-              className="w-full bg-slate-50 border-slate-200 rounded-full pl-9 focus-visible:ring-blue-500 h-9"
-            />
+              <Input
+                type="search"
+                placeholder="Search notes, notices..."
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setShowResults(true);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && searchQuery.trim()) {
+                    router.push(`/search?q=${encodeURIComponent(searchQuery)}`);
+                    setShowResults(false);
+                  }
+                }}
+                onFocus={() => setShowResults(true)}
+                onBlur={() => setTimeout(() => setShowResults(false), 200)}
+                className="w-full bg-slate-50 border-slate-200 rounded-full pl-9 pr-48 focus-visible:ring-blue-500 h-10 shadow-sm"
+              />
+              
+              <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                <Select value={searchType} onValueChange={(val) => val && setSearchType(val)}>
+                  <SelectTrigger className="h-7 w-auto min-w-[70px] text-[10px] bg-white border-slate-200 rounded-lg px-2">
+                    <SelectValue placeholder="Type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Types</SelectItem>
+                    <SelectItem value="notes">Notes</SelectItem>
+                    <SelectItem value="pyqs">PYQs</SelectItem>
+                    <SelectItem value="assignments">Assignments</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                <Select value={searchSemester} onValueChange={(val) => val && setSearchSemester(val)}>
+                  <SelectTrigger className="h-7 w-auto min-w-[60px] text-[10px] bg-white border-slate-200 rounded-lg px-2">
+                    <SelectValue placeholder="Sem" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Sem</SelectItem>
+                    {[1,2,3,4,5,6,7,8].map(s => (
+                      <SelectItem key={s} value={String(s)}>Sem {s}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <Select value={searchSort} onValueChange={(val) => val && setSearchSort(val)}>
+                  <SelectTrigger className="h-7 w-12 bg-white border-slate-200 rounded-lg px-2 flex items-center justify-center hover:bg-slate-50 transition-colors">
+                    <SlidersHorizontal className="h-3 w-3 text-slate-500" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="newest">Newest</SelectItem>
+                    <SelectItem value="oldest">Oldest</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
           </div>
           
           {/* Search Dropdown */}
@@ -112,13 +245,24 @@ export function Navbar() {
                       key={result.id}
                       href={`/${result.type}`}
                       className="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 transition-colors"
+                      onClick={() => setShowResults(false)}
                     >
                       <div className="bg-blue-50 p-2 rounded-lg text-blue-600">
-                        {result.type === 'notes' ? <BookOpen className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
+                        {result.type === 'notes' ? <BookOpen className="h-4 w-4" /> : 
+                         result.type === 'notices' ? <Bell className="h-4 w-4" /> :
+                         result.type === 'requests' ? <MessageSquare className="h-4 w-4" /> :
+                         <FileText className="h-4 w-4" />}
                       </div>
                       <div className="flex-1 overflow-hidden">
-                        <p className="text-sm font-medium text-slate-900 truncate">{result.title}</p>
-                        <p className="text-xs text-slate-500 capitalize">{result.type} • {result.subject}</p>
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-medium text-slate-900 truncate">{result.title}</p>
+                          {result.category && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-medium">{result.category}</span>
+                          )}
+                        </div>
+                        <p className="text-xs text-slate-500 capitalize">
+                          {result.type} {result.semester ? `• Sem ${result.semester}` : ''} {result.subject ? `• ${result.subject}` : ''}
+                        </p>
                       </div>
                     </Link>
                   ))}
@@ -128,15 +272,88 @@ export function Navbar() {
                   No results found for "{searchQuery}"
                 </div>
               )}
+              {searchQuery.length > 0 && (
+                <div className="border-t border-slate-100 mt-1">
+                  <Link
+                    href={`/search?q=${encodeURIComponent(searchQuery)}`}
+                    className="flex items-center justify-center gap-2 px-4 py-2 text-xs font-semibold text-blue-600 hover:bg-blue-50 transition-colors"
+                  >
+                    See all results for "{searchQuery}"
+                  </Link>
+                </div>
+              )}
             </div>
           )}
         </div>
 
         <div className="flex flex-1 items-center justify-end space-x-4">
-          <Button variant="ghost" size="icon" className="relative rounded-full">
-            <Bell className="h-5 w-5 text-slate-600" />
-            <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-blue-600 border border-white"></span>
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger className="relative flex size-8 items-center justify-center rounded-full text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
+              <Bell className="h-5 w-5" />
+              {unreadCount > 0 && (
+                <span className="absolute top-1.5 right-1.5 h-4 min-w-[16px] px-1 flex items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white border-2 border-white translate-x-1/2 -translate-y-1/2 pointer-events-none">
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </span>
+              )}
+            </DropdownMenuTrigger>
+            <DropdownMenuContent className="w-80 rounded-2xl border-slate-200 shadow-2xl p-0" align="end">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 bg-slate-50/50 rounded-t-2xl">
+                <h3 className="font-bold text-sm text-slate-900">Notifications</h3>
+                {unreadCount > 0 && (
+                  <Button variant="ghost" size="sm" onClick={handleMarkAllRead} className="h-7 text-[11px] font-semibold text-blue-600 hover:text-blue-700 hover:bg-blue-50">
+                    Mark all read
+                  </Button>
+                )}
+              </div>
+              <div className="max-h-[400px] overflow-y-auto py-1">
+                {loadingNotifications && notifications.length === 0 ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="h-5 w-5 animate-spin text-blue-500" />
+                  </div>
+                ) : notifications.length > 0 ? (
+                  notifications.map((notif) => (
+                    <Link
+                      key={notif.id}
+                      href={notif.link || '#'}
+                      onClick={() => handleMarkRead(notif.id)}
+                      className="block px-4 py-3 hover:bg-slate-50 transition-colors border-l-4 border-blue-500 bg-blue-50/20"
+                    >
+                      <div className="flex flex-col gap-0.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className={`text-sm font-semibold ${notif.is_read ? 'text-slate-700' : 'text-slate-900'}`}>
+                            {notif.title}
+                          </p>
+                          <span className="text-[10px] text-slate-400 whitespace-nowrap">
+                            {new Date(notif.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-500 line-clamp-2">{notif.message}</p>
+                      </div>
+                    </Link>
+                  ))
+                ) : (
+                  <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
+                    <div className="bg-slate-50 p-3 rounded-full mb-3">
+                      <Bell className="h-6 w-6 text-slate-300" />
+                    </div>
+                    <p className="text-sm font-medium text-slate-900">No notifications yet</p>
+                    <p className="text-xs text-slate-500 mt-1">We'll let you know when something important happens.</p>
+                  </div>
+                )}
+              </div>
+              <div className="p-2 border-t border-slate-100 bg-slate-50/50 rounded-b-2xl">
+                <Button variant="ghost" size="sm" className="w-full text-[11px] font-medium text-slate-500 hover:text-slate-900 h-8">
+                  View All Activity
+                </Button>
+              </div>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          {!isVerified && dbUser && (
+            <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+              <ShieldAlert className="h-3 w-3" /> Unverified Account
+            </div>
+          )}
 
           <DropdownMenu>
             <DropdownMenuTrigger className="relative h-9 w-9 rounded-full outline-none cursor-pointer hover:bg-slate-100 transition-colors flex items-center justify-center">

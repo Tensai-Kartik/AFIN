@@ -8,10 +8,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { toast } from 'sonner';
 import {
-  Loader2, ShieldCheck, ShieldAlert, Clock, User, Mail,
-  BadgeCheck, Upload, CheckCircle2,
+  BadgeCheck, Upload, CheckCircle2, AlertCircle, Trophy, GraduationCap, Save,
+  Mail, Loader2, Clock, User, ShieldCheck, ShieldAlert
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
@@ -19,10 +20,13 @@ export default function ProfilePage() {
   const { user, dbUser, loading, isVerified, hasPendingVerification } = useAuth();
   const router = useRouter();
 
-  const [prn, setPrn] = useState('');
-  const [phone, setPhone] = useState('');
+  const [fullName, setFullName] = useState(dbUser?.full_name || '');
+  const [prn, setPrn] = useState(dbUser?.prn && !dbUser.prn.startsWith('PENDING-') ? dbUser.prn : '');
+  const [phone, setPhone] = useState(dbUser?.phone || '');
+  const [cgpa, setCgpa] = useState(dbUser?.cgpa || '');
   const [idCardFile, setIdCardFile] = useState<File | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isUpdatingCgpa, setIsUpdatingCgpa] = useState(false);
 
   if (loading) {
     return (
@@ -37,30 +41,52 @@ export default function ProfilePage() {
     return null;
   }
 
-  const isUnsubmitted = dbUser?.prn?.startsWith('PENDING-');
+  const isRejected = dbUser?.status === 'rejected';
+  const isUnsubmitted = !dbUser?.prn || dbUser?.prn?.startsWith('PENDING-');
+  const needsVerification = isUnsubmitted || isRejected;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!prn || !phone || !idCardFile) {
+    if (!fullName || !prn || !phone || !idCardFile) {
       toast.error('Please fill all fields and upload your ID card.');
       return;
     }
 
     setIsSubmitting(true);
     try {
+      // 1. Upload ID Card
       const idCardUrl = await uploadIdCard(idCardFile, user.id);
 
-      const { error } = await supabase
-        .from('users')
-        .update({
+      // 2. Get JWT Session to send to Express Backend
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !sessionData.session) {
+        throw new Error('Authentication session error. Please login again.');
+      }
+      const token = sessionData.session.access_token;
+
+      // 3. Update via Express Backend API
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000';
+      const response = await fetch(`${backendUrl}/api/profile/update`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          full_name: fullName,
           prn,
           phone,
+          cgpa: cgpa ? parseFloat(cgpa as string) : null,
           id_card_url: idCardUrl,
-          status: 'pending',
+          avatar_url: dbUser?.avatar_url || null
         })
-        .eq('id', user.id);
+      });
 
-      if (error) throw error;
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to update profile.');
+      }
 
       toast.success('Verification submitted! An admin will review your ID card shortly.');
       window.location.reload();
@@ -72,48 +98,107 @@ export default function ProfilePage() {
     }
   };
 
+  const handleUpdateCgpa = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!cgpa) return;
+
+    setIsUpdatingCgpa(true);
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData?.session?.access_token;
+      
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000';
+      const res = await fetch(`${backendUrl}/api/profile/update`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          cgpa: cgpa ? parseFloat(cgpa as string) : null
+        })
+      });
+
+      if (!res.ok) throw new Error('Failed to update CGPA');
+      toast.success('CGPA updated successfully!');
+      window.location.reload();
+    } catch (error: any) {
+      toast.error(error.message);
+    } finally {
+      setIsUpdatingCgpa(false);
+    }
+  };
+
   // ─── Verification status badge ───────────────────────────────────────────────
   const StatusBadge = () => {
     if (isVerified) {
       return (
         <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-          <ShieldCheck className="h-4 w-4" /> Verified Student
+          <ShieldCheck className="h-4 w-4" /> Verified
+        </span>
+      );
+    }
+    if (isRejected) {
+      return (
+        <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-semibold bg-red-50 text-red-700 border border-red-200">
+          <ShieldAlert className="h-4 w-4" /> Rejected
         </span>
       );
     }
     if (hasPendingVerification) {
       return (
-        <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-semibold bg-blue-50 text-blue-700 border border-blue-200">
-          <Clock className="h-4 w-4" /> Verification Pending Review
+        <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+          <Clock className="h-4 w-4" /> Pending
         </span>
       );
     }
     return (
-      <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-semibold bg-amber-50 text-amber-700 border border-amber-200">
-        <ShieldAlert className="h-4 w-4" /> Unverified
+      <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-semibold bg-slate-100 text-slate-700 border border-slate-200">
+        <User className="h-4 w-4" /> Unverified
       </span>
     );
   };
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6">
+    <div className="h-full lg:overflow-hidden lg:max-h-[calc(100vh-100px)] py-2">
+      <div className="max-w-2xl mx-auto space-y-4">
+      
+      {!isVerified && !hasPendingVerification && (
+        <Alert className="bg-amber-50 border-amber-200 text-amber-900 rounded-2xl">
+          <AlertCircle className="h-5 w-5 text-amber-600" />
+          <AlertTitle className="font-semibold text-amber-800">Your account is not verified.</AlertTitle>
+          <AlertDescription className="text-amber-700 mt-1">
+            You can view content but cannot contribute until you complete verification below.
+          </AlertDescription>
+        </Alert>
+      )}
+
       {/* ─── Profile Card ─────────────────────────────────────────────────────── */}
       <Card className="rounded-2xl border-0 shadow-sm overflow-hidden">
-        <div className="h-24 bg-gradient-to-br from-blue-500 to-indigo-600" />
-        <CardContent className="pt-0 -mt-12 pb-6">
-          <div className="flex items-end gap-4 mb-4">
-            <div className="w-20 h-20 rounded-2xl bg-white border-4 border-white shadow-lg flex items-center justify-center text-3xl font-bold text-blue-600 shrink-0">
-              {dbUser?.full_name?.charAt(0) || user.email?.charAt(0)?.toUpperCase()}
-            </div>
-            <div className="pb-1">
-              <h1 className="text-2xl font-bold text-slate-900 leading-tight">
+        <div className="relative h-28 bg-gradient-to-br from-blue-500 to-indigo-600 px-6 pb-3 flex items-end gap-4">
+          <div className="w-20 h-20 rounded-2xl bg-white shadow-lg flex items-center justify-center text-3xl font-bold text-blue-600 shrink-0 translate-y-8 border-4 border-white">
+            {dbUser?.full_name?.charAt(0) || user.email?.charAt(0)?.toUpperCase()}
+          </div>
+          <div className="flex-1 flex justify-between items-end pb-1 text-white">
+            <div>
+              <h1 className="text-2xl font-bold leading-tight drop-shadow-sm">
                 {dbUser?.full_name || 'Student'}
               </h1>
-              <StatusBadge />
+              <div className="mt-1">
+                <StatusBadge />
+              </div>
+            </div>
+            <div className="text-right">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/20 backdrop-blur-md text-white border border-white/20 shadow-sm">
+                <Trophy className="h-4 w-4" />
+                <span className="text-lg font-bold">{dbUser?.points || 0}</span>
+                <span className="text-xs font-medium uppercase tracking-wider opacity-80">pts</span>
+              </div>
             </div>
           </div>
-
-          <div className="grid gap-3 mt-4">
+        </div>
+        <CardContent className="pt-10 pb-4">
+          <div className="grid gap-2 mt-1">
             <div className="flex items-center gap-3 text-sm text-slate-600">
               <Mail className="h-4 w-4 text-slate-400" />
               {user.email}
@@ -134,45 +219,74 @@ export default function ProfilePage() {
         </CardContent>
       </Card>
 
-      {/* ─── Permissions Card ─────────────────────────────────────────────────── */}
+      {/* ─── Academic Info Card ───────────────────────────────────────────── */}
       <Card className="rounded-2xl border-0 shadow-sm">
         <CardHeader>
-          <CardTitle className="text-lg">Your Access Level</CardTitle>
-          <CardDescription>What you can do on AFIN right now.</CardDescription>
+          <CardTitle className="text-lg flex items-center gap-2">
+            <GraduationCap className="h-5 w-5 text-blue-600" />
+            Academic Details
+          </CardTitle>
+          <CardDescription>Keep your academic record up to date for placements.</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-3">
-          {[
-            { label: 'Browse notes, PYQs, assignments', allowed: true },
-            { label: 'Download content', allowed: true },
-            { label: 'View student requests', allowed: true },
-            { label: 'Upload content', allowed: isVerified },
-            { label: 'Make requests', allowed: isVerified },
-          ].map(({ label, allowed }) => (
-            <div key={label} className="flex items-center gap-3 text-sm">
-              <CheckCircle2
-                className={`h-4 w-4 shrink-0 ${allowed ? 'text-emerald-500' : 'text-slate-300'}`}
+        <CardContent>
+          <form onSubmit={handleUpdateCgpa} className="flex items-end gap-4">
+            <div className="flex-1 space-y-2">
+              <Label htmlFor="current-cgpa">Current CGPA</Label>
+              <Input
+                id="current-cgpa"
+                type="number"
+                step="0.01"
+                min="0"
+                max="10"
+                placeholder="e.g. 8.5"
+                value={cgpa}
+                onChange={(e) => setCgpa(e.target.value)}
+                className="rounded-xl h-11"
               />
-              <span className={allowed ? 'text-slate-700' : 'text-slate-400'}>{label}</span>
             </div>
-          ))}
+            <Button 
+              type="submit" 
+              disabled={isUpdatingCgpa || !cgpa} 
+              className="rounded-xl h-11 bg-slate-900 hover:bg-slate-800 text-white gap-2"
+            >
+              {isUpdatingCgpa ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              Update
+            </Button>
+          </form>
+          <p className="text-xs text-slate-400 mt-2">
+            Your CGPA is used to match you with eligible companies in the Placement Tracker.
+          </p>
         </CardContent>
       </Card>
 
-      {/* ─── Verification Form (only for unsubmitted users) ───────────────────── */}
-      {isUnsubmitted && (
-        <Card className="rounded-2xl border-0 shadow-sm border-t-4 border-t-amber-400">
+      {/* ─── Verification Form (only for unsubmitted/rejected users) ───────────────────── */}
+      {needsVerification && (
+        <Card className="rounded-2xl border-0 shadow-sm border-t-4 border-t-blue-500" id="verify-form">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-lg">
-              <ShieldCheck className="h-5 w-5 text-amber-500" />
-              Get Verified
+              <ShieldCheck className="h-5 w-5 text-blue-500" />
+              {isRejected ? 'Resubmit Verification' : 'Complete Verification'}
             </CardTitle>
             <CardDescription>
-              Submit your PRN and university ID card. Once an admin approves, you'll be able to
-              upload and make requests.
+              {isRejected 
+                ? 'Your previous verification was rejected. Please check your details and submit a clear ID card.' 
+                : 'Submit your details and university ID card. Once an admin approves, you will be able to contribute.'}
             </CardDescription>
           </CardHeader>
           <form onSubmit={handleSubmit}>
             <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="fullName">Full Name</Label>
+                <Input
+                  id="fullName"
+                  placeholder="e.g. John Doe"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  required
+                  className="rounded-xl h-11"
+                />
+              </div>
+
               <div className="space-y-2">
                 <Label htmlFor="prn">PRN (Permanent Registration Number)</Label>
                 <Input
@@ -185,17 +299,34 @@ export default function ProfilePage() {
                 />
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="phone">Phone Number</Label>
-                <Input
-                  id="phone"
-                  type="tel"
-                  placeholder="e.g. +91 9876543210"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  required
-                  className="rounded-xl h-11"
-                />
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="phone">Phone Number</Label>
+                  <Input
+                    id="phone"
+                    type="tel"
+                    placeholder="e.g. +91 9876543210"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    required
+                    className="rounded-xl h-11"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="form-cgpa">Current CGPA</Label>
+                  <Input
+                    id="form-cgpa"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    max="10"
+                    placeholder="e.g. 8.5"
+                    value={cgpa}
+                    onChange={(e) => setCgpa(e.target.value)}
+                    required
+                    className="rounded-xl h-11"
+                  />
+                </div>
               </div>
 
               <div className="space-y-2">
@@ -231,12 +362,12 @@ export default function ProfilePage() {
 
       {/* ─── Pending state card ──────────────────────────────────────────────── */}
       {hasPendingVerification && (
-        <Card className="rounded-2xl border-0 shadow-sm bg-blue-50 border border-blue-100">
+        <Card className="rounded-2xl border-0 shadow-sm bg-amber-50 border border-amber-100">
           <CardContent className="flex items-center gap-4 py-5">
-            <Clock className="h-10 w-10 text-blue-400 shrink-0" />
+            <Clock className="h-10 w-10 text-amber-500 shrink-0" />
             <div>
-              <p className="font-semibold text-blue-900">Verification under review</p>
-              <p className="text-sm text-blue-700 mt-0.5">
+              <p className="font-semibold text-amber-900">Verification under review</p>
+              <p className="text-sm text-amber-700 mt-0.5">
                 Your ID card has been received. An admin will approve your account soon. You'll
                 automatically get full access once verified.
               </p>
@@ -245,5 +376,6 @@ export default function ProfilePage() {
         </Card>
       )}
     </div>
-  );
+  </div>
+);
 }

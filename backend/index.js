@@ -24,6 +24,7 @@ const marketRoutes = require('./routes/marketRoutes');
 const analyticsRoutes = require('./routes/analyticsRoutes');
 const recommendationRoutes = require('./routes/recommendationRoutes');
 const digitalTwinRoutes = require('./routes/digitalTwinRoutes');
+const chatbotRoutes = require('./routes/chatbotRoutes');
 const { rateLimit } = require('express-rate-limit');
 
 const app = express();
@@ -155,6 +156,7 @@ app.use('/api/market', generalLimiter, marketRoutes);
 app.use('/api/analytics', generalLimiter, analyticsRoutes);
 app.use('/api/recommendations', generalLimiter, recommendationRoutes);
 app.use('/api/digital-twin', generalLimiter, digitalTwinRoutes);
+app.use('/api/chatbot', aiLimiter, chatbotRoutes);
 // 404 Handler
 app.use((req, res) => {
   res.status(404).json({ error: `Route ${req.originalUrl} not found.` });

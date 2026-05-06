@@ -5,6 +5,7 @@ import { AuthProvider } from "@/components/auth-provider";
 import { NotificationProvider } from "@/components/notification-provider";
 import { Toaster } from "@/components/ui/sonner";
 import { PwaRegister } from "@/components/pwa-register";
+import { FloatingChat } from "@/components/chat/floating-chat";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -37,6 +38,7 @@ export default function RootLayout({
           <NotificationProvider>
             <PwaRegister />
             {children}
+            <FloatingChat />
             <Toaster />
           </NotificationProvider>
         </AuthProvider>

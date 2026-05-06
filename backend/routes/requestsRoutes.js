@@ -1,25 +1,26 @@
 const express = require('express');
 const { verifyToken, requireVerifiedStudent } = require('../middleware/authMiddleware');
+const { z } = require('zod');
 const router = express.Router();
+
+const requestSchema = z.object({
+  title: z.string().min(5).max(150),
+  description: z.string().min(10).max(1500),
+  subject: z.string().min(2).max(100),
+});
 
 // POST /api/requests/create
 // Submit a new student request
 router.post('/create', verifyToken, requireVerifiedStudent, async (req, res) => {
   try {
-    const { title, description, subject } = req.body;
+    const validatedData = requestSchema.parse(req.body);
     const authorId = req.user.id;
-
-    if (!title || !description || !subject) {
-      return res.status(400).json({ error: 'Title, description, and subject are required.' });
-    }
 
     const { data, error } = await req.supabase
       .from('requests')
       .insert([
         {
-          title,
-          description,
-          subject,
+          ...validatedData,
           author_id: authorId
         }
       ])
@@ -29,6 +30,9 @@ router.post('/create', verifyToken, requireVerifiedStudent, async (req, res) => 
 
     res.json({ message: 'Request posted successfully.', request: data[0] });
   } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ error: error.errors });
+    }
     console.error('Error creating request:', error);
     res.status(500).json({ error: 'Failed to create request.' });
   }

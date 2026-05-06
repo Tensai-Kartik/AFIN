@@ -10,6 +10,8 @@ const MODULE_CONFIG = {
   'lost-found':    { table: 'lost_found',   owner_col: 'created_by'  },
   'accommodation': { table: 'accommodation', owner_col: 'created_by' },
   'placement':     { table: 'companies',     owner_col: 'created_by' },
+  'market-skill':   { table: 'skills',        owner_col: 'user_id'    },
+  'market-request': { table: 'requests_market', owner_col: 'user_id'  },
 };
 
 /**

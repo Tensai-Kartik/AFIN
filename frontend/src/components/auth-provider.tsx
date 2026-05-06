@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useEffect, useRef, useState } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState, useMemo } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import { useRouter, usePathname } from 'next/navigation';
@@ -113,10 +113,19 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     !dbUser?.prn?.startsWith('PENDING-') &&
     dbUser?.status === 'pending';
 
+  const value = React.useMemo(() => ({
+    user,
+    session,
+    dbUser,
+    loading,
+    isVerified,
+    isSoleAdmin,
+    hasPendingVerification,
+    signOut
+  }), [user, session, dbUser, loading, isVerified, isSoleAdmin, hasPendingVerification]);
+
   return (
-    <AuthContext.Provider
-      value={{ user, session, dbUser, loading, isVerified, isSoleAdmin, hasPendingVerification, signOut }}
-    >
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );

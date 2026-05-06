@@ -20,6 +20,8 @@ import {
   Building2,
   Briefcase,
   Trophy,
+  ShoppingBag,
+  Activity,
 } from 'lucide-react';
 import { useAuth } from '../auth-provider';
 
@@ -39,7 +41,9 @@ const ecosystemRoutes = [
   { name: 'Feedback System', path: '/feedback', icon: MessageSquarePlus },
   { name: 'Campus Hub', path: '/campus', icon: Building2 },
   { name: 'Placement', path: '/placement', icon: Briefcase },
+  { name: 'Marketplace', path: '/market', icon: ShoppingBag },
   { name: 'Leaderboard', path: '/leaderboard', icon: Trophy },
+  { name: 'Digital Twin', path: '/digital-twin', icon: Activity },
 ];
 
 export function Sidebar() {

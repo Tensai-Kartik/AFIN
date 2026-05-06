@@ -19,6 +19,11 @@ const placementRoutes = require('./routes/placementRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
 const contentRoutes = require('./routes/contentRoutes');
 const deleteRoutes = require('./routes/deleteRoutes');
+const aiRoutes = require('./routes/aiRoutes');
+const marketRoutes = require('./routes/marketRoutes');
+const analyticsRoutes = require('./routes/analyticsRoutes');
+const recommendationRoutes = require('./routes/recommendationRoutes');
+const digitalTwinRoutes = require('./routes/digitalTwinRoutes');
 const { rateLimit } = require('express-rate-limit');
 
 const app = express();
@@ -30,6 +35,7 @@ app.use(cors({
   origin: process.env.FRONTEND_URL || 'http://localhost:3000',
   credentials: true
 }));
+
 // Rate Limiters
 const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 min
@@ -57,6 +63,12 @@ const submissionLimiter = rateLimit({
   message: { error: 'Too many submissions. Please slow down.' },
 });
 
+const aiLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 15,
+  message: { error: 'AI request limit reached. Max 15 requests per hour.' },
+});
+
 app.use(express.json());
 
 // Supabase Setup
@@ -72,16 +84,51 @@ const io = new Server(server, {
   }
 });
 
+// Socket.io Middleware for Authentication
+io.use(async (socket, next) => {
+  try {
+    const token = socket.handshake.auth.token;
+    if (!token) {
+      return next(new Error('Authentication error: Token missing'));
+    }
+
+    // Verify token with Supabase
+    const { data: { user }, error } = await supabase.auth.getUser(token);
+    
+    if (error || !user) {
+      return next(new Error('Authentication error: Invalid token'));
+    }
+
+    // Attach user to socket for later use
+    socket.user = user;
+    next();
+  } catch (err) {
+    next(new Error('Internal server error during socket auth'));
+  }
+});
+
 io.on('connection', (socket) => {
-  console.log('A user connected:', socket.id);
+  console.log(`User connected: ${socket.user?.email || socket.id}`);
+  
+  socket.on('join', (userId) => {
+    // Only allow joining own room for security
+    if (socket.user?.id === userId) {
+      socket.join(userId);
+      console.log(`User ${userId} joined their private room`);
+    } else {
+      console.warn(`Unauthorized join attempt: User ${socket.user?.id} tried to join room ${userId}`);
+    }
+  });
+
   socket.on('disconnect', () => {
     console.log('User disconnected:', socket.id);
   });
 });
 
-// Attach supabase to req so routes can use it
+// Attach supabase and io to req so routes can use them
 app.use((req, res, next) => {
   req.supabase = supabase;
+  req.io = io;
   next();
 });
 
@@ -103,13 +150,17 @@ app.use('/api/placement', generalLimiter, placementRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/content', generalLimiter, contentRoutes);
 app.use('/api/delete', generalLimiter, deleteRoutes);
-
-// 404 Handler - Return JSON
+app.use('/api/ai', aiLimiter, aiRoutes);
+app.use('/api/market', generalLimiter, marketRoutes);
+app.use('/api/analytics', generalLimiter, analyticsRoutes);
+app.use('/api/recommendations', generalLimiter, recommendationRoutes);
+app.use('/api/digital-twin', generalLimiter, digitalTwinRoutes);
+// 404 Handler
 app.use((req, res) => {
   res.status(404).json({ error: `Route ${req.originalUrl} not found.` });
 });
 
-// Global Error Handler - Return JSON
+// Global Error Handler
 app.use((err, req, res, next) => {
   console.error('[SERVER ERROR]', err);
   res.status(err.status || 500).json({ 

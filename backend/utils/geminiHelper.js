@@ -6,6 +6,13 @@ const API_KEYS = envKeys.split(',').map(key => key.trim()).filter(Boolean); // R
 
 let currentKeyIndex = 0;
 
+function getNextKey() {
+  if (API_KEYS.length === 0) return '';
+  const key = API_KEYS[currentKeyIndex];
+  currentKeyIndex = (currentKeyIndex + 1) % API_KEYS.length;
+  return key;
+}
+
 // The search database tool declaration for the chatbot
 const searchTool = {
   functionDeclarations: [
@@ -35,8 +42,7 @@ const searchTool = {
 const TARGET_MODEL = "gemini-2.5-flash";
 
 function getChatbotModel() {
-  const currentKey = API_KEYS[currentKeyIndex];
-  const genAI = new GoogleGenerativeAI(currentKey);
+  const genAI = new GoogleGenerativeAI(getNextKey());
   
   return genAI.getGenerativeModel({ 
     model: TARGET_MODEL,
@@ -59,8 +65,7 @@ CRITICAL RULES:
 }
 
 function getAiModel() {
-  const currentKey = API_KEYS[currentKeyIndex];
-  const genAI = new GoogleGenerativeAI(currentKey);
+  const genAI = new GoogleGenerativeAI(getNextKey());
   
   return genAI.getGenerativeModel({ model: TARGET_MODEL });
 }
@@ -68,7 +73,7 @@ function getAiModel() {
 // A robust wrapper that executes a Gemini API call and rotates keys if it hits a quota/server error
 async function withKeyRotation(apiCallFunction) {
   let attempts = 0;
-  const maxAttempts = API_KEYS.length;
+  const maxAttempts = Math.max(API_KEYS.length, 1);
 
   while (attempts < maxAttempts) {
     try {
@@ -85,10 +90,8 @@ async function withKeyRotation(apiCallFunction) {
         errorMsg.includes('503') || 
         errorMsg.includes('fetch failed')
       ) {
-        console.warn(`[GEMINI ROTATION] Key at index ${currentKeyIndex} failed (Status: ${apiError.status || 'Network'}). Rotating to next key...`);
+        console.warn(`[GEMINI ROTATION] A key failed (Status: ${apiError.status || 'Network'}). Retrying with next key...`);
         
-        // Move to the next key
-        currentKeyIndex = (currentKeyIndex + 1) % API_KEYS.length;
         attempts++;
         
         // Brief pause before retry

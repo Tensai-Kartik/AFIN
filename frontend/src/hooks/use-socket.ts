@@ -25,6 +25,13 @@ export function useSocket() {
     if (!globalSocket) {
       const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000';
       
+      // Since Vercel Serverless does not support persistent Socket.io servers,
+      // we disable socket connections entirely on Vercel to prevent native browser network console errors.
+      if (backendUrl.includes('vercel.app') || (typeof window !== 'undefined' && window.location.hostname.includes('vercel.app'))) {
+        setIsConnected(false);
+        return;
+      }
+      
       let socketPath = undefined;
       try {
         const parsedUrl = new URL(backendUrl);

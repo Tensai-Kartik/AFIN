@@ -8,8 +8,9 @@ export async function GET(request: Request) {
   const next = searchParams.get('next') ?? '/'
 
   if (code) {
-    // cookies() must be awaited in Next.js 15
     const cookieStore = await cookies()
+    // Instantiate redirect response first so we can attach session cookies to it
+    const response = NextResponse.redirect(`${origin}${next}`)
 
     const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -21,12 +22,14 @@ export async function GET(request: Request) {
           },
           setAll(cookiesToSet) {
             try {
-              cookiesToSet.forEach(({ name, value, options }) =>
+              cookiesToSet.forEach(({ name, value, options }) => {
+                // Set cookies in cookie store
                 cookieStore.set(name, value, options)
-              )
-            } catch {
-              // setAll called from a Server Component — safe to ignore
-              // session will be set by middleware on the next request
+                // Set cookies on the redirect response itself to ensure they persist
+                response.cookies.set(name, value, options)
+              })
+            } catch (err) {
+              console.error('[Auth Callback] setAll cookie error:', err)
             }
           },
         },
@@ -36,7 +39,7 @@ export async function GET(request: Request) {
     const { error } = await supabase.auth.exchangeCodeForSession(code)
 
     if (!error) {
-      return NextResponse.redirect(`${origin}${next}`)
+      return response
     }
 
     console.error('[Auth Callback] exchangeCodeForSession error:', error.message)

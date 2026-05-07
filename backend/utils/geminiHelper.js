@@ -1,13 +1,8 @@
 const { GoogleGenerativeAI, SchemaType } = require('@google/generative-ai');
 
 // The array of keys starting with the one in environment variables, followed by the fallback keys
-const API_KEYS = [
-  process.env.GEMINI_API_KEY,
-  'AIzaSyCpiL2wiQfb8AoXzmCD_uBjp_DP-KAvGic',
-  'AIzaSyAiw0zj-iDvtCAHKtdx0MskIO8iJkIBRqU',
-  'AIzaSyDz0G22-mWBYqYKCiw7o_Q6OnNldMmvApc',
-  'AIzaSyAQRlW2c_jyiQj8ljPOsckKcBBtDRTp0Mo'
-].filter(Boolean); // Remove any undefined or empty strings
+const envKeys = process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEYS || '';
+const API_KEYS = envKeys.split(',').map(key => key.trim()).filter(Boolean); // Remove any undefined or empty strings
 
 let currentKeyIndex = 0;
 

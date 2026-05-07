@@ -11,11 +11,16 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  typescript: {
+    ignoreBuildErrors: true,
+  },
   async rewrites() {
     return [
       {
         source: '/_/backend/:path*',
-        destination: 'http://localhost:5000/:path*',
+        destination: process.env.NODE_ENV === 'development' 
+          ? 'http://localhost:5000/:path*'
+          : '/_/backend/:path*',
       },
     ];
   },

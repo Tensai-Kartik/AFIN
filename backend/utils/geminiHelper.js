@@ -1,13 +1,17 @@
 const { GoogleGenerativeAI, SchemaType } = require('@google/generative-ai');
 
 // The array of keys starting with the one in environment variables, followed by the fallback keys
+// The array of keys starting with the one in environment variables, followed by the fallback keys
 const envKeys = process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEYS || '';
 const API_KEYS = envKeys.split(',').map(key => key.trim()).filter(Boolean); // Remove any undefined or empty strings
 
 let currentKeyIndex = 0;
 
 function getNextKey() {
-  if (API_KEYS.length === 0) return '';
+  if (API_KEYS.length === 0) {
+    console.error('[GEMINI ERROR]: No API keys found in GEMINI_API_KEY or GEMINI_API_KEYS env variables.');
+    throw new Error('Gemini API Key is not configured in the environment variables.');
+  }
   const key = API_KEYS[currentKeyIndex];
   currentKeyIndex = (currentKeyIndex + 1) % API_KEYS.length;
   return key;
@@ -39,7 +43,7 @@ const searchTool = {
 };
 
 // Common configuration
-const TARGET_MODEL = "gemini-2.5-flash";
+const TARGET_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 
 function getChatbotModel() {
   const genAI = new GoogleGenerativeAI(getNextKey());
@@ -82,15 +86,25 @@ async function withKeyRotation(apiCallFunction) {
     } catch (apiError) {
       const errorMsg = String(apiError);
       
-      // Check if the error is related to quota (429), server overloaded (503), or network timeout
+      // Check if the error is related to quota, server overloaded, network timeout, or key issues (like leaked or forbidden 403/400 keys)
       if (
         apiError.status === 429 || 
         apiError.status === 503 || 
+        apiError.status === 403 || 
+        apiError.status === 401 || 
+        apiError.status === 400 || 
         errorMsg.includes('429') || 
         errorMsg.includes('503') || 
+        errorMsg.includes('403') || 
+        errorMsg.includes('401') || 
+        errorMsg.includes('400') || 
+        errorMsg.includes('leaked') || 
+        errorMsg.includes('Forbidden') || 
+        errorMsg.includes('API key') || 
+        errorMsg.includes('API_KEY') || 
         errorMsg.includes('fetch failed')
       ) {
-        console.warn(`[GEMINI ROTATION] A key failed (Status: ${apiError.status || 'Network'}). Retrying with next key...`);
+        console.warn(`[GEMINI ROTATION] A key failed (Status/Message: ${apiError.status || 'Key Issue'}). Retrying with next key...`);
         
         attempts++;
         
@@ -99,10 +113,10 @@ async function withKeyRotation(apiCallFunction) {
         
         if (attempts >= maxAttempts) {
           console.error('[GEMINI ROTATION] Exhausted all available API keys.');
-          throw new Error('All API keys exhausted their quotas or are currently unavailable.');
+          throw new Error('All API keys exhausted their quotas or are currently unavailable/invalid.');
         }
       } else {
-        // If it's a different error (e.g., bad request, invalid prompt), throw it immediately without rotating
+        // If it's a different error (e.g., user input error), throw it immediately without rotating
         throw apiError;
       }
     }

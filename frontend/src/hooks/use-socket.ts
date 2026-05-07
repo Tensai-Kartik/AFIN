@@ -24,15 +24,31 @@ export function useSocket() {
 
     if (!globalSocket) {
       const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000';
+      
+      let socketPath = undefined;
+      try {
+        const parsedUrl = new URL(backendUrl);
+        if (parsedUrl.pathname && parsedUrl.pathname !== '/') {
+          socketPath = parsedUrl.pathname.endsWith('/') 
+            ? `${parsedUrl.pathname}socket.io` 
+            : `${parsedUrl.pathname}/socket.io`;
+        }
+      } catch (e) {
+        // Handle relative paths if any
+        if (backendUrl.startsWith('/')) {
+          socketPath = `${backendUrl.replace(/\/$/, '')}/socket.io`;
+        }
+      }
 
       globalSocket = io(backendUrl, {
         auth: {
           token: session.access_token,
         },
-        transports: ['websocket'],
+        path: socketPath,
+        transports: ['polling', 'websocket'], // Use polling first or as fallback
         reconnection: true,
-        reconnectionAttempts: 5,
-        reconnectionDelay: 1000,
+        reconnectionAttempts: 3, // Reduce from 5 to 3 to prevent infinite spam
+        reconnectionDelay: 5000, // Wait 5s before retrying
       });
 
       globalSocket.on('connect', () => {
@@ -45,7 +61,13 @@ export function useSocket() {
       });
 
       globalSocket.on('connect_error', (err) => {
-        console.error('Socket connection error:', err.message);
+        // Log gracefully to avoid console noise in production serverless environments where websockets aren't active
+        if (process.env.NODE_ENV === 'development') {
+          console.warn('Socket connection note (development):', err.message);
+        } else {
+          // Silent failure in production to keep console clean
+          setIsConnected(false);
+        }
       });
 
       globalSocket.on('notification', (data: { message: string, type?: 'success' | 'error' | 'info' }) => {

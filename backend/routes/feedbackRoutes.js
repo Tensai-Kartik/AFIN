@@ -70,4 +70,48 @@ router.post('/create', async (req, res) => {
   }
 });
 
+// POST /api/feedback/app — Authenticated
+
+router.post('/app', async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+    const token = authHeader.split(' ')[1];
+    const { data: { user }, error: authError } = await req.supabase.auth.getUser(token);
+    
+    if (authError || !user) {
+      return res.status(401).json({ error: 'Invalid token' });
+    }
+
+    const { feedback_type, subject, message, screenshot_url } = req.body;
+
+    if (!feedback_type || !subject || !message) {
+      return res.status(400).json({ error: 'Missing required fields.' });
+    }
+
+    const { data, error } = await req.supabase
+      .from('app_feedback')
+      .insert([{ 
+        user_id: user.id,
+        user_name: user.user_metadata?.full_name || user.email || 'Unknown',
+        user_email: user.email || '',
+        feedback_type,
+        subject,
+        message,
+        screenshot_url
+      }])
+      .select();
+
+    if (error) throw error;
+
+
+    res.json({ message: 'Feedback submitted successfully.', feedback: data[0] });
+  } catch (error) {
+    console.error('Error submitting app feedback:', error);
+    res.status(500).json({ error: 'Failed to submit feedback.' });
+  }
+});
+
 module.exports = router;

@@ -85,7 +85,35 @@ router.delete('/:module/:id', verifyToken, async (req, res) => {
 
     if (deleteError) throw deleteError;
 
-    // 6. Audit log
+    // 6. Point Deduction for Leaderboard Sync
+    if (module === 'content' && record[config.owner_col]) {
+      try {
+        // Points logic:
+        // - Approved: -30 (cancels upload+10 and approval+20)
+        // - Pending: -10 (cancels upload+10)
+        // - Rejected: 0 (points were already revoked during the rejection step in admin panel)
+        let pointsToSubtract = 0;
+        if (record.status === 'approved') pointsToSubtract = -30;
+        else if (record.status === 'pending') pointsToSubtract = -10;
+
+        if (pointsToSubtract !== 0) {
+          console.log(`[DELETE] Deducting ${Math.abs(pointsToSubtract)} points from user ${record[config.owner_col]} for content deletion.`);
+          
+          const { error: pointsError } = await req.supabase.rpc('add_user_points', { 
+            p_user_id: record[config.owner_col], 
+            p_amount: pointsToSubtract 
+          });
+
+          if (pointsError) {
+            console.warn(`[DELETE] Failed to deduct points:`, pointsError.message);
+          }
+        }
+      } catch (pError) {
+        console.error('[DELETE] Error occurred during point deduction:', pError);
+      }
+    }
+
+    // 7. Audit log
     await req.supabase
       .from('audit_logs')
       .insert([{

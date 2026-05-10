@@ -9,8 +9,8 @@ router.get('/pending-users', verifyToken, requireAdmin, async (req, res) => {
       .from('users')
       .select('*')
       .eq('status', 'pending')
-      .not('prn', 'is', null) // Ensure they have actually submitted the form
-      .not('prn', 'ilike', 'PENDING-%') // Exclude those who haven't set a real PRN yet
+      .not('prn', 'is', null) 
+      .not('prn', 'ilike', 'PENDING-%') 
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -28,7 +28,7 @@ router.get('/pending-users', verifyToken, requireAdmin, async (req, res) => {
 // POST /api/admin/verify-user
 router.post('/verify-user', verifyToken, requireAdmin, async (req, res) => {
   try {
-    const { targetUserId, action } = req.body; // action: 'approve' | 'reject'
+    const { targetUserId, action } = req.body; 
     const adminId = req.user.id;
 
     if (!targetUserId || !action) {
@@ -42,7 +42,6 @@ router.post('/verify-user', verifyToken, requireAdmin, async (req, res) => {
     let newStatus = action === 'approve' ? 'verified' : 'rejected';
     let newRole = action === 'approve' ? 'verified_student' : 'user';
 
-    // Update user
     const { data, error } = await req.supabase
       .from('users')
       .update({
@@ -58,7 +57,6 @@ router.post('/verify-user', verifyToken, requireAdmin, async (req, res) => {
       return res.status(500).json({ error: 'Failed to verify user.' });
     }
 
-    // Log the action
     await req.supabase
       .from('audit_logs')
       .insert([
@@ -108,7 +106,7 @@ router.get('/pending-content', verifyToken, requireAdmin, async (req, res) => {
 // POST /api/admin/verify-content
 router.post('/verify-content', verifyToken, requireAdmin, async (req, res) => {
   try {
-    const { targetContentId, action } = req.body; // action: 'approve' | 'reject'
+    const { targetContentId, action } = req.body; 
     const adminId = req.user.id;
 
     if (!targetContentId || !action) {
@@ -121,7 +119,6 @@ router.post('/verify-content', verifyToken, requireAdmin, async (req, res) => {
 
     let newStatus = action === 'approve' ? 'approved' : 'rejected';
 
-    // Update content
     const { data, error } = await req.supabase
       .from('content')
       .update({
@@ -148,9 +145,15 @@ router.post('/verify-content', verifyToken, requireAdmin, async (req, res) => {
         }
       ]);
 
-    // Award +20 points if content approved
-    if (action === 'approve' && data && data[0] && data[0].uploader_id) {
-      await req.supabase.rpc('add_user_points', { p_user_id: data[0].uploader_id, p_amount: 20 });
+    // Handle Point Economy for Content Verification
+    if (data && data[0] && data[0].uploader_id) {
+      if (action === 'approve') {
+        // Award +20 points if content approved (brings total contribution to 30)
+        await req.supabase.rpc('add_user_points', { p_user_id: data[0].uploader_id, p_amount: 20 });
+      } else if (action === 'reject') {
+        // Revoke the +10 points that were automatically awarded on upload, bringing net contribution to 0
+        await req.supabase.rpc('add_user_points', { p_user_id: data[0].uploader_id, p_amount: -10 });
+      }
     }
 
     res.json({ message: `Content ${action}d successfully.`, content: data[0] });
@@ -191,7 +194,7 @@ router.get('/pending-notices', verifyToken, requireAdmin, async (req, res) => {
 // POST /api/admin/verify-notice
 router.post('/verify-notice', verifyToken, requireAdmin, async (req, res) => {
   try {
-    const { targetNoticeId, action } = req.body; // action: 'approve' | 'reject'
+    const { targetNoticeId, action } = req.body; 
     const adminId = req.user.id;
 
     if (!targetNoticeId || !action) {
@@ -204,7 +207,6 @@ router.post('/verify-notice', verifyToken, requireAdmin, async (req, res) => {
 
     let newStatus = action === 'approve' ? 'approved' : 'rejected';
 
-    // Update notice
     const { data, error } = await req.supabase
       .from('notices')
       .update({
@@ -219,7 +221,6 @@ router.post('/verify-notice', verifyToken, requireAdmin, async (req, res) => {
       return res.status(500).json({ error: 'Failed to verify notice.' });
     }
 
-    // Log the action
     await req.supabase
       .from('audit_logs')
       .insert([
@@ -253,7 +254,6 @@ router.get('/feedback', verifyToken, requireAdmin, async (req, res) => {
     const avgRating = total > 0 ? data.reduce((sum, f) => sum + f.rating, 0) / total : 0;
     const avgSentiment = total > 0 ? data.reduce((sum, f) => sum + (f.sentiment_score || 0), 0) / total : 0;
 
-    // Group by faculty
     const byFaculty = {};
     data.forEach(f => {
       if (!byFaculty[f.faculty_name]) {
@@ -280,6 +280,59 @@ router.get('/feedback', verifyToken, requireAdmin, async (req, res) => {
   } catch (error) {
     console.error('Error fetching feedback summary:', error);
     res.status(500).json({ error: 'Failed to fetch feedback summary.' });
+  }
+});
+
+// GET /api/admin/app-feedback
+router.get('/app-feedback', verifyToken, requireAdmin, async (req, res) => {
+  try {
+    const { data, error } = await req.supabase
+      .from('app_feedback')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+
+    const total = data.length;
+    const bugs = data.filter(f => f.feedback_type === 'Bug Report').length;
+    const features = data.filter(f => f.feedback_type === 'Feature Request').length;
+    const suggestions = data.filter(f => f.feedback_type === 'Suggestion').length;
+
+    res.json({
+      total,
+      bugs,
+      features,
+      suggestions,
+      feedback: data
+    });
+  } catch (error) {
+    console.error('Error fetching app feedback:', error);
+    res.status(500).json({ error: 'Failed to fetch app feedback.' });
+  }
+});
+
+// PUT /api/admin/app-feedback/:id/status
+router.put('/app-feedback/:id/status', verifyToken, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    if (!['pending', 'reviewed', 'planned', 'resolved'].includes(status)) {
+      return res.status(400).json({ error: 'Invalid status' });
+    }
+
+    const { data, error } = await req.supabase
+      .from('app_feedback')
+      .update({ status })
+      .eq('id', id)
+      .select();
+
+    if (error) throw error;
+
+    res.json({ message: 'Status updated', feedback: data[0] });
+  } catch (error) {
+    console.error('Error updating app feedback status:', error);
+    res.status(500).json({ error: 'Failed to update status.' });
   }
 });
 

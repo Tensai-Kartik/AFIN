@@ -60,6 +60,18 @@ type AdminFeedback = {
   created_at: string;
 };
 
+type AppFeedback = {
+  id: string;
+  user_name: string;
+  user_email: string;
+  feedback_type: string;
+  subject: string;
+  message: string;
+  screenshot_url: string;
+  status: string;
+  created_at: string;
+};
+
 export default function AdminDashboardPage() {
   const [pendingUsers, setPendingUsers] = useState<PendingUser[]>([]);
   const [pendingContent, setPendingContent] = useState<PendingContent[]>([]);
@@ -69,6 +81,7 @@ export default function AdminDashboardPage() {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState('users');
   const [feedbackData, setFeedbackData] = useState<{ feedback: AdminFeedback[], by_faculty: any[], avg_rating: number, total: number } | null>(null);
+  const [appFeedbackData, setAppFeedbackData] = useState<{ feedback: AppFeedback[], total: number, bugs: number, features: number, suggestions: number } | null>(null);
 
   const fetchPendingUsers = useCallback(async () => {
     try {
@@ -186,11 +199,30 @@ export default function AdminDashboardPage() {
     }
   }, []);
 
+  const fetchAppFeedback = useCallback(async () => {
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      if (!token) return;
+
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000';
+      const res = await fetch(`${backendUrl}/api/admin/app-feedback`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      
+      if (!res.ok) throw new Error('Failed to fetch app feedback');
+      const data = await res.json();
+      setAppFeedbackData(data);
+    } catch (error) {
+      console.error(error);
+    }
+  }, []);
+
   const fetchAll = useCallback(async () => {
     setLoading(true);
-    await Promise.all([fetchPendingUsers(), fetchPendingContent(), fetchPendingNotices(), fetchFeedback()]);
+    await Promise.all([fetchPendingUsers(), fetchPendingContent(), fetchPendingNotices(), fetchFeedback(), fetchAppFeedback()]);
     setLoading(false);
-  }, [fetchPendingUsers, fetchPendingContent, fetchPendingNotices, fetchFeedback]);
+  }, [fetchPendingUsers, fetchPendingContent, fetchPendingNotices, fetchFeedback, fetchAppFeedback]);
 
   useEffect(() => {
     fetchAll();
@@ -354,6 +386,15 @@ export default function AdminDashboardPage() {
             {feedbackData?.total ? (
               <Badge variant="secondary" className="ml-2 bg-blue-100 text-blue-700 hover:bg-blue-100 border-0">
                 {feedbackData.total}
+              </Badge>
+            ) : null}
+          </TabsTrigger>
+          <TabsTrigger value="app-feedback" className="rounded-lg px-6 h-10 data-[state=active]:bg-white data-[state=active]:shadow-sm">
+            <Star className="w-4 h-4 mr-2" />
+            App Feedback
+            {appFeedbackData?.total ? (
+              <Badge variant="secondary" className="ml-2 bg-blue-100 text-blue-700 hover:bg-blue-100 border-0">
+                {appFeedbackData.total}
               </Badge>
             ) : null}
           </TabsTrigger>
@@ -692,6 +733,117 @@ export default function AdminDashboardPage() {
                           "{f.comment}"
                         </p>
                       )}
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="app-feedback" className="space-y-6 focus-visible:outline-none">
+          {loading ? (
+            <div className="flex justify-center py-12">
+              <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+            </div>
+          ) : !appFeedbackData || appFeedbackData.feedback.length === 0 ? (
+            <Card className="border-0 shadow-sm rounded-2xl bg-white overflow-hidden">
+              <CardContent className="py-16 flex flex-col items-center justify-center text-center">
+                <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mb-4">
+                  <MessageSquare className="w-8 h-8 text-blue-500" />
+                </div>
+                <h3 className="text-xl font-semibold text-slate-900 mb-2">No App Feedback</h3>
+                <p className="text-slate-500 max-w-sm">No users have submitted app feedback yet.</p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <Card className="border-0 shadow-sm rounded-2xl bg-white">
+                  <CardContent className="p-6">
+                    <p className="text-sm font-medium text-slate-500">Total Feedback</p>
+                    <div className="flex items-center gap-2 mt-2">
+                      <MessageSquare className="w-6 h-6 text-blue-600" />
+                      <span className="text-3xl font-bold text-slate-900">{appFeedbackData.total}</span>
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card className="border-0 shadow-sm rounded-2xl bg-white">
+                  <CardContent className="p-6">
+                    <p className="text-sm font-medium text-slate-500">Bug Reports</p>
+                    <div className="flex items-center gap-2 mt-2">
+                      <span className="text-3xl font-bold text-red-600">{appFeedbackData.bugs}</span>
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card className="border-0 shadow-sm rounded-2xl bg-white">
+                  <CardContent className="p-6">
+                    <p className="text-sm font-medium text-slate-500">Feature Requests</p>
+                    <div className="flex items-center gap-2 mt-2">
+                      <span className="text-3xl font-bold text-purple-600">{appFeedbackData.features}</span>
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card className="border-0 shadow-sm rounded-2xl bg-white">
+                  <CardContent className="p-6">
+                    <p className="text-sm font-medium text-slate-500">Suggestions</p>
+                    <div className="flex items-center gap-2 mt-2">
+                      <span className="text-3xl font-bold text-green-600">{appFeedbackData.suggestions}</span>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {appFeedbackData.feedback.filter(f => 
+                  f.subject?.toLowerCase().includes(search.toLowerCase()) || 
+                  f.user_name?.toLowerCase().includes(search.toLowerCase()) ||
+                  f.message?.toLowerCase().includes(search.toLowerCase())
+                ).map(f => (
+                  <Card key={f.id} className="border-0 shadow-sm rounded-2xl bg-white overflow-hidden flex flex-col h-full">
+                    <CardHeader className="border-b border-slate-100 bg-slate-50/50 pb-4">
+                      <div className="flex justify-between items-start gap-2">
+                        <div className="space-y-1 w-full">
+                          <div className="flex justify-between items-center w-full">
+                            <Badge variant="outline" className={`
+                              ${f.feedback_type === 'Bug Report' ? 'bg-red-50 text-red-700 border-red-200' : 
+                                f.feedback_type === 'Feature Request' ? 'bg-purple-50 text-purple-700 border-purple-200' : 
+                                f.feedback_type === 'Suggestion' ? 'bg-green-50 text-green-700 border-green-200' : 
+                                'bg-blue-50 text-blue-700 border-blue-200'}`}>
+                              {f.feedback_type}
+                            </Badge>
+                            <span className="text-xs text-slate-400">
+                              {new Date(f.created_at).toLocaleDateString()}
+                            </span>
+                          </div>
+                          <CardTitle className="text-lg text-slate-900 pt-1 line-clamp-2">{f.subject}</CardTitle>
+                        </div>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="pt-4 pb-5 space-y-4 flex-1 flex flex-col">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-slate-500">From:</span>
+                        <span className="font-medium text-slate-900">{f.user_name || f.user_email || 'Unknown'}</span>
+                      </div>
+                      
+                      <p className="text-sm text-slate-600 bg-slate-50 p-3 rounded-lg border border-slate-100 italic flex-1 overflow-y-auto max-h-32">
+                        "{f.message}"
+                      </p>
+
+                      {f.screenshot_url && (
+                        <a href={f.screenshot_url} target="_blank" rel="noreferrer" className="text-xs text-blue-600 hover:underline flex items-center gap-1">
+                          <ExternalLink className="w-3 h-3" /> View Screenshot
+                        </a>
+                      )}
+
+                      <div className="pt-2 border-t border-slate-100 mt-2">
+                        <p className="text-xs text-slate-500 mb-2">Status: <span className="font-semibold text-slate-700 capitalize">{f.status}</span></p>
+                        <div className="flex gap-2">
+                          <Button size="sm" variant="outline" className="text-xs h-8 flex-1" onClick={() => handleAppFeedbackStatus(f.id, 'reviewed')} disabled={f.status === 'reviewed'}>Reviewed</Button>
+                          <Button size="sm" variant="outline" className="text-xs h-8 flex-1 border-blue-200 text-blue-700 hover:bg-blue-50" onClick={() => handleAppFeedbackStatus(f.id, 'planned')} disabled={f.status === 'planned'}>Planned</Button>
+                          <Button size="sm" variant="outline" className="text-xs h-8 flex-1 border-green-200 text-green-700 hover:bg-green-50" onClick={() => handleAppFeedbackStatus(f.id, 'resolved')} disabled={f.status === 'resolved'}>Resolved</Button>
+                        </div>
+                      </div>
                     </CardContent>
                   </Card>
                 ))}

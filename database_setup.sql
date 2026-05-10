@@ -172,3 +172,53 @@ USING (
   (storage.foldername(name))[1] = 'id_cards' AND
   (storage.foldername(name))[2] = (auth.uid())::text
 );
+
+-- 5. Create App Feedback Table
+CREATE TABLE IF NOT EXISTS public.app_feedback (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+  user_name TEXT,
+  user_email TEXT,
+  feedback_type TEXT NOT NULL,
+  subject TEXT NOT NULL,
+  message TEXT NOT NULL,
+  screenshot_url TEXT,
+  status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'reviewed', 'planned', 'resolved')),
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Enable RLS
+ALTER TABLE public.app_feedback ENABLE ROW LEVEL SECURITY;
+
+-- Allow authenticated users to insert feedback
+CREATE POLICY "Users can insert app feedback"
+ON public.app_feedback FOR INSERT
+TO authenticated
+WITH CHECK (true);
+
+-- Allow admins to read all feedback
+CREATE POLICY "Admins can view app feedback"
+ON public.app_feedback FOR SELECT
+TO authenticated
+USING (EXISTS (
+  SELECT 1 FROM public.users 
+  WHERE users.id = auth.uid() AND users.role = 'admin'
+));
+
+-- Allow admins to update feedback status
+CREATE POLICY "Admins can update app feedback"
+ON public.app_feedback FOR UPDATE
+TO authenticated
+USING (EXISTS (
+  SELECT 1 FROM public.users 
+  WHERE users.id = auth.uid() AND users.role = 'admin'
+));
+
+-- Allow users to upload to feedback folder in afin-storage
+CREATE POLICY "Users can upload feedback screenshots"
+ON storage.objects FOR INSERT
+TO authenticated
+WITH CHECK (
+  bucket_id = 'afin-storage' AND 
+  (storage.foldername(name))[1] = 'feedback'
+);

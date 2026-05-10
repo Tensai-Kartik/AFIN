@@ -16,6 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Bell, Search, Menu, FileText, Loader2, BookOpen, Shield, Users, CheckSquare, UsersRound, ShieldAlert, SlidersHorizontal, MessageSquare } from 'lucide-react';
 import { NotificationBell } from '../notification-bell';
+import { AppFeedbackModal } from '../feedback/app-feedback-modal';
 import { Input } from '../ui/input';
 import { useState, useEffect } from 'react';
 import { useDebounce } from 'use-debounce';
@@ -196,7 +197,8 @@ export function Navbar() {
           )}
         </div>
 
-        <div className="flex flex-1 items-center justify-end space-x-4">
+        <div className="flex flex-1 items-center justify-end space-x-2 md:space-x-4">
+          <AppFeedbackModal />
           <NotificationBell />
 
           {!isVerified && dbUser && (

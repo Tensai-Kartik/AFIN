@@ -12,6 +12,8 @@ const MODULE_CONFIG = {
   'placement':     { table: 'companies',     owner_col: 'created_by' },
   'market-skill':   { table: 'skills',        owner_col: 'user_id'    },
   'market-request': { table: 'requests_market', owner_col: 'user_id'  },
+  'faculty-feedback': { table: 'feedback',      owner_col: null, hard_delete: true },
+  'app-feedback':     { table: 'app_feedback',  owner_col: 'user_id', hard_delete: true },
 };
 
 /**
@@ -77,11 +79,21 @@ router.delete('/:module/:id', verifyToken, async (req, res) => {
       }
     }
 
-    // 5. Soft-delete: stamp deleted_at
-    const { error: deleteError } = await req.supabase
-      .from(config.table)
-      .update({ deleted_at: new Date().toISOString() })
-      .eq('id', id);
+    // 5. Execute Removal (Hard vs Soft Delete)
+    let deleteError = null;
+    if (config.hard_delete) {
+      const { error } = await req.supabase
+        .from(config.table)
+        .delete()
+        .eq('id', id);
+      deleteError = error;
+    } else {
+      const { error } = await req.supabase
+        .from(config.table)
+        .update({ deleted_at: new Date().toISOString() })
+        .eq('id', id);
+      deleteError = error;
+    }
 
     if (deleteError) throw deleteError;
 

@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
-import { Loader2, Check, X, Search, FileText, Users, FileCheck, ExternalLink, Calendar, BookOpen, Bell, Pin, MessageSquare, Star } from 'lucide-react';
+import { Loader2, Check, X, Search, FileText, Users, FileCheck, ExternalLink, Calendar, BookOpen, Bell, Pin, MessageSquare, Star, Trash2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -310,6 +310,79 @@ export default function AdminDashboardPage() {
     } catch (error: any) {
       console.error(error);
       toast.error(`Failed to ${action} notice.`);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+  
+  const handleDeleteFeedback = async (id: string) => {
+    if (!window.confirm("Are you sure you want to permanently delete this feedback?")) return;
+    
+    setActionLoading(id);
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      if (!token) throw new Error('No session');
+
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000';
+      const res = await fetch(`${backendUrl}/api/delete/faculty-feedback/${id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to delete');
+
+      toast.success('Feedback deleted successfully.');
+      await fetchFeedback(); 
+    } catch (error: any) {
+      console.error(error);
+      toast.error(error.message || 'Failed to delete feedback.');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+  
+  const handleAppFeedbackStatus = async (id: string, status: 'pending' | 'reviewed' | 'planned' | 'resolved') => {
+    setActionLoading(id);
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      if (!token) throw new Error('No session');
+
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000';
+      
+      if (status === 'resolved') {
+        // Per user request: "like after pressing resolve the review should be deleted"
+        if (!window.confirm("Resolve and delete this feedback? This is permanent.")) {
+          setActionLoading(null);
+          return;
+        }
+        const res = await fetch(`${backendUrl}/api/delete/app-feedback/${id}`, {
+          method: 'DELETE',
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to delete');
+        toast.success('Feedback resolved and permanently deleted.');
+      } else {
+        // Regular status update
+        const res = await fetch(`${backendUrl}/api/admin/app-feedback/${id}/status`, {
+          method: 'PUT',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}` 
+          },
+          body: JSON.stringify({ status })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to update status');
+        toast.success(`Status updated to ${status}.`);
+      }
+
+      await fetchAppFeedback(); 
+    } catch (error: any) {
+      console.error(error);
+      toast.error(error.message || 'Action failed.');
     } finally {
       setActionLoading(null);
     }
@@ -717,7 +790,18 @@ export default function AdminDashboardPage() {
                               {new Date(f.created_at).toLocaleDateString()}
                             </span>
                           </div>
-                          <CardTitle className="text-lg text-slate-900 pt-1">{f.faculty_name}</CardTitle>
+                          <div className="flex justify-between items-start w-full pt-1 gap-2">
+                            <CardTitle className="text-lg text-slate-900">{f.faculty_name}</CardTitle>
+                            <Button 
+                              size="icon" 
+                              variant="ghost" 
+                              className="h-7 w-7 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md shrink-0"
+                              onClick={() => handleDeleteFeedback(f.id)}
+                              disabled={actionLoading === f.id}
+                            >
+                              {actionLoading === f.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                            </Button>
+                          </div>
                         </div>
                       </div>
                     </CardHeader>
@@ -839,9 +923,33 @@ export default function AdminDashboardPage() {
                       <div className="pt-2 border-t border-slate-100 mt-2">
                         <p className="text-xs text-slate-500 mb-2">Status: <span className="font-semibold text-slate-700 capitalize">{f.status}</span></p>
                         <div className="flex gap-2">
-                          <Button size="sm" variant="outline" className="text-xs h-8 flex-1" onClick={() => handleAppFeedbackStatus(f.id, 'reviewed')} disabled={f.status === 'reviewed'}>Reviewed</Button>
-                          <Button size="sm" variant="outline" className="text-xs h-8 flex-1 border-blue-200 text-blue-700 hover:bg-blue-50" onClick={() => handleAppFeedbackStatus(f.id, 'planned')} disabled={f.status === 'planned'}>Planned</Button>
-                          <Button size="sm" variant="outline" className="text-xs h-8 flex-1 border-green-200 text-green-700 hover:bg-green-50" onClick={() => handleAppFeedbackStatus(f.id, 'resolved')} disabled={f.status === 'resolved'}>Resolved</Button>
+                          <Button 
+                            size="sm" 
+                            variant="outline" 
+                            className="text-xs h-8 flex-1" 
+                            onClick={() => handleAppFeedbackStatus(f.id, 'reviewed')} 
+                            disabled={actionLoading !== null || f.status === 'reviewed'}
+                          >
+                            {actionLoading === f.id ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Reviewed'}
+                          </Button>
+                          <Button 
+                            size="sm" 
+                            variant="outline" 
+                            className="text-xs h-8 flex-1 border-blue-200 text-blue-700 hover:bg-blue-50" 
+                            onClick={() => handleAppFeedbackStatus(f.id, 'planned')} 
+                            disabled={actionLoading !== null || f.status === 'planned'}
+                          >
+                            {actionLoading === f.id ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Planned'}
+                          </Button>
+                          <Button 
+                            size="sm" 
+                            variant="outline" 
+                            className="text-xs h-8 flex-1 border-green-200 text-green-700 hover:bg-green-50" 
+                            onClick={() => handleAppFeedbackStatus(f.id, 'resolved')} 
+                            disabled={actionLoading !== null}
+                          >
+                            {actionLoading === f.id ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Resolved'}
+                          </Button>
                         </div>
                       </div>
                     </CardContent>

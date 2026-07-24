@@ -21,6 +21,29 @@ export const metadata: Metadata = {
   title: "AFIN - A Friend In Need",
   description: "A student-powered academic content portal.",
   manifest: "/manifest.json",
+  icons: {
+    icon: [
+      { url: "/favicon.ico", sizes: "any" },
+      { url: "/favicon-16x16.png", sizes: "16x16", type: "image/png" },
+      { url: "/favicon-32x32.png", sizes: "32x32", type: "image/png" },
+      { url: "/favicon-96x96.png", sizes: "96x96", type: "image/png" },
+      { url: "/icon-192x192.png", sizes: "192x192", type: "image/png" },
+    ],
+    shortcut: "/favicon.ico",
+    apple: [
+      { url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" },
+      { url: "/apple-touch-icon-152x152.png", sizes: "152x152", type: "image/png" },
+      { url: "/apple-touch-icon-120x120.png", sizes: "120x120", type: "image/png" },
+    ],
+    other: [
+      { rel: "apple-touch-icon-precomposed", url: "/apple-touch-icon-precomposed.png" },
+    ],
+  },
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "AFIN",
+  },
 };
 
 export default function RootLayout({

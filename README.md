@@ -105,10 +105,10 @@ FRONTEND_URL=http://localhost:3000
 GEMINI_API_KEY=key1,key2,key3
 ```
 
-Create a `.env.local` file in the `frontend/` directory:
 ```env
 NEXT_PUBLIC_SUPABASE_URL=https://<your-project-ref>.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=<your-supabase-anon-key>
+SUPABASE_SERVICE_ROLE_KEY=<your-supabase-service-role-key> # Optional fallback for server routes
 ```
 
 ### 3. Database Migration
@@ -138,10 +138,16 @@ The App Router will launch on `http://localhost:3000`.
 
 ## Deployment Configuration
 
-Vercel orchestrates the multi-service monorepo using `vercel.json` to map routing prefixes to their respective entry points:
+Vercel orchestrates the multi-service monorepo using `vercel.json` to map routing prefixes and cron schedules to their respective entry points:
 
 ```json
 {
+  "crons": [
+    {
+      "path": "/api/cron/keepalive",
+      "schedule": "0 0 * * *"
+    }
+  ],
   "experimentalServices": {
     "frontend": {
       "entrypoint": "frontend",
@@ -157,3 +163,5 @@ Vercel orchestrates the multi-service monorepo using `vercel.json` to map routin
 ```
 
 *   **Production URL Routing**: Direct web pages and interface assets are served at `/` through Next.js, while backend service API requests are securely forwarded to the Express instance via `/_/backend/api/...`.
+*   **Supabase Inactivity Prevention (Cron Keepalive)**: A daily cron at `0 0 * * *` triggers `/api/cron/keepalive` to perform a lightweight query against Supabase, preventing free-tier databases from pausing due to 7 days of inactivity. Secure this endpoint in Vercel with the `CRON_SECRET` environment variable.
+
